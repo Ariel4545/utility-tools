@@ -3,9 +3,26 @@ import tkinter
 from tkinter import ttk, messagebox
 import time
 import datetime
-import win32api
+import sys
+import threading
+import json
+
+try:
+    import win32api
+    HAS_WIN32API = True
+except ImportError:
+    HAS_WIN32API = False
+
+try:
+    import pystray
+    from PIL import Image, ImageDraw
+    HAS_TRAY = True
+except ImportError:
+    HAS_TRAY = False
 
 class App(tkinter.Tk):
+    CONFIG_FILE = 'settings.json'
+
     def __init__(self):
         super().__init__()
 
@@ -16,7 +33,7 @@ class App(tkinter.Tk):
         self.triggers = ('countdown', 'instant', 'timedate')
         self.current_trigger = tkinter.StringVar(value=self.triggers[0])
         
-        self.exe_methods = ('shut down', 'restart')
+        self.exe_methods = ('shut down', 'restart', 'sleep')
         self.function_type = tkinter.StringVar(value=self.exe_methods[0])
         
         self.countdown_minutes = tkinter.IntVar(value=10)
@@ -26,12 +43,20 @@ class App(tkinter.Tk):
         self.remaining_seconds = 0
         self.total_seconds = 0
 
+        self.load_preferences()
+
         # UI Setup
         self.title('Calculated Turn Off')
         self.geometry('400x350')
         self.resizable(False, False)
 
         self.create_widgets()
+        
+        if HAS_TRAY:
+            self.protocol('WM_DELETE_WINDOW', self.hide_window)
+            self.setup_tray()
+        else:
+            self.protocol('WM_DELETE_WINDOW', self.quit_app)
 
     def create_widgets(self):
         # Tabs
@@ -72,6 +97,7 @@ class App(tkinter.Tk):
         method_frame.grid(row=1, column=1, sticky='w', padx=10)
         ttk.Radiobutton(method_frame, text='Shut Down', value='shut down', variable=self.function_type).pack(side='left', padx=5)
         ttk.Radiobutton(method_frame, text='Restart', value='restart', variable=self.function_type).pack(side='left', padx=5)
+        ttk.Radiobutton(method_frame, text='Sleep', value='sleep', variable=self.function_type).pack(side='left', padx=5)
 
         # Countdown Input
         ttk.Label(self.settings_tab, text='Countdown (min):').grid(row=2, column=0, sticky='w', padx=10, pady=10)
@@ -84,6 +110,58 @@ class App(tkinter.Tk):
         # Note
         ttk.Label(self.settings_tab, text='* Ensure time format is 24h', font=('Arial', 8, 'italic')).grid(row=4, column=0, columnspan=2, pady=5)
 
+    def create_tray_image(self):
+        # Generate a simple red square icon for the tray
+        image = Image.new('RGB', (64, 64), color='white')
+        dc = ImageDraw.Draw(image)
+        dc.rectangle((16, 16, 48, 48), fill='red')
+        return image
+
+    def setup_tray(self):
+        menu = pystray.Menu(
+            pystray.MenuItem('Show', self.show_window, default=True),
+            pystray.MenuItem('Quit', self.quit_app)
+        )
+        self.icon = pystray.Icon("auto_turnoff", self.create_tray_image(), "Auto Turnoff", menu)
+        threading.Thread(target=self.icon.run, daemon=True).start()
+
+    def hide_window(self):
+        self.withdraw()
+
+    def show_window(self, icon, item):
+        self.after(0, self.deiconify)
+
+    def load_preferences(self):
+        if os.path.exists(self.CONFIG_FILE):
+            try:
+                with open(self.CONFIG_FILE, 'r') as f:
+                    data = json.load(f)
+                    if 'trigger' in data: self.current_trigger.set(data['trigger'])
+                    if 'action' in data: self.function_type.set(data['action'])
+                    if 'countdown' in data: self.countdown_minutes.set(data['countdown'])
+                    if 'target_time' in data: self.target_time_str.set(data['target_time'])
+            except Exception as e:
+                print("Could not load preferences:", e)
+
+    def save_preferences(self):
+        try:
+            data = {
+                'trigger': self.current_trigger.get(),
+                'action': self.function_type.get(),
+                'countdown': self.countdown_minutes.get(),
+                'target_time': self.target_time_str.get()
+            }
+            with open(self.CONFIG_FILE, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            print("Could not save preferences:", e)
+
+    def quit_app(self, icon=None, item=None):
+        self.save_preferences()
+        if HAS_TRAY and hasattr(self, 'icon'):
+            self.icon.stop()
+        self.after(0, self.destroy)
+
     def activate(self):
         action = self.function_type.get()
         # Reset UI
@@ -91,17 +169,35 @@ class App(tkinter.Tk):
         self.status_label.config(text=f'Executing {action}...')
         
         # Execute
+        platform = sys.platform
+        
         if action == 'shut down':
-            # Windows shutdown command
-            os.system('shutdown -s -t 0')
+            if platform == 'win32':
+                os.system('shutdown -s -t 0')
+            elif platform == 'darwin':
+                os.system('osascript -e \'tell app "System Events" to shut down\'')
+            else:
+                os.system('systemctl poweroff')
         elif action == 'restart':
-            try:
-                # Try win32api first (Windows specific)
-                # InitiateSystemShutdown(machineName, message, timeout, forceAppsClosed, rebootAfterShutdown)
-                win32api.InitiateSystemShutdown(None, "Restarting...", 0, 1, 1)
-            except:
-                # Fallback
-                os.system('shutdown -r -t 0')
+            if platform == 'win32':
+                try:
+                    if HAS_WIN32API:
+                        win32api.InitiateSystemShutdown(None, "Restarting...", 0, 1, 1)
+                    else:
+                        os.system('shutdown -r -t 0')
+                except:
+                    os.system('shutdown -r -t 0')
+            elif platform == 'darwin':
+                os.system('osascript -e \'tell app "System Events" to restart\'')
+            else:
+                os.system('systemctl reboot')
+        elif action == 'sleep':
+            if platform == 'win32':
+                os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+            elif platform == 'darwin':
+                os.system('osascript -e \'tell app "System Events" to sleep\'')
+            else:
+                os.system('systemctl suspend')
 
     def update_timer(self):
         if not self.running:
