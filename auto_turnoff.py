@@ -20,6 +20,12 @@ try:
 except ImportError:
     HAS_TRAY = False
 
+try:
+    from plyer import notification
+    HAS_PLYER = True
+except ImportError:
+    HAS_PLYER = False
+
 class App(tkinter.Tk):
     CONFIG_FILE = 'settings.json'
 
@@ -38,6 +44,7 @@ class App(tkinter.Tk):
         
         self.countdown_minutes = tkinter.IntVar(value=10)
         self.target_time_str = tkinter.StringVar(value='00:00')
+        self.autostart_enabled = tkinter.BooleanVar(value=False)
 
         # Internal state
         self.remaining_seconds = 0
@@ -109,6 +116,66 @@ class App(tkinter.Tk):
 
         # Note
         ttk.Label(self.settings_tab, text='* Ensure time format is 24h', font=('Arial', 8, 'italic')).grid(row=4, column=0, columnspan=2, pady=5)
+        
+        # Autostart Checkbox
+        ttk.Checkbutton(self.settings_tab, text='Run on Startup', variable=self.autostart_enabled, command=self.toggle_autostart).grid(row=5, column=0, columnspan=2, pady=10)
+
+    def toggle_autostart(self):
+        enable = self.autostart_enabled.get()
+        platform = sys.platform
+        script_path = os.path.abspath(sys.argv[0])
+        
+        try:
+            if platform == 'win32':
+                startup_dir = os.path.join(os.getenv('APPDATA', ''), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup')
+                if not startup_dir: return
+                bat_path = os.path.join(startup_dir, 'auto_turnoff.bat')
+                if enable:
+                    with open(bat_path, 'w') as f:
+                        f.write(f'@echo off\npythonw "{script_path}"')
+                else:
+                    if os.path.exists(bat_path): os.remove(bat_path)
+            elif platform == 'darwin':
+                plist_dir = os.path.expanduser('~/Library/LaunchAgents')
+                os.makedirs(plist_dir, exist_ok=True)
+                plist_path = os.path.join(plist_dir, 'com.user.autoturnoff.plist')
+                if enable:
+                    plist_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.user.autoturnoff</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>python3</string>
+        <string>{script_path}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>'''
+                    with open(plist_path, 'w') as f:
+                        f.write(plist_content)
+                else:
+                    if os.path.exists(plist_path): os.remove(plist_path)
+            else: # Linux
+                autostart_dir = os.path.expanduser('~/.config/autostart')
+                os.makedirs(autostart_dir, exist_ok=True)
+                desktop_path = os.path.join(autostart_dir, 'auto_turnoff.desktop')
+                if enable:
+                    desktop_content = f'''[Desktop Entry]
+Type=Application
+Name=Auto Turnoff
+Exec=python3 "{script_path}"
+Terminal=false
+'''
+                    with open(desktop_path, 'w') as f:
+                        f.write(desktop_content)
+                else:
+                    if os.path.exists(desktop_path): os.remove(desktop_path)
+        except Exception as e:
+            print("Failed to toggle autostart:", e)
 
     def create_tray_image(self):
         # Generate a simple red square icon for the tray
@@ -140,6 +207,9 @@ class App(tkinter.Tk):
                     if 'action' in data: self.function_type.set(data['action'])
                     if 'countdown' in data: self.countdown_minutes.set(data['countdown'])
                     if 'target_time' in data: self.target_time_str.set(data['target_time'])
+                    if 'autostart' in data:
+                        self.autostart_enabled.set(data['autostart'])
+                        self.toggle_autostart()
             except Exception as e:
                 print("Could not load preferences:", e)
 
@@ -149,7 +219,8 @@ class App(tkinter.Tk):
                 'trigger': self.current_trigger.get(),
                 'action': self.function_type.get(),
                 'countdown': self.countdown_minutes.get(),
-                'target_time': self.target_time_str.get()
+                'target_time': self.target_time_str.get(),
+                'autostart': self.autostart_enabled.get()
             }
             with open(self.CONFIG_FILE, 'w') as f:
                 json.dump(data, f)
@@ -199,6 +270,18 @@ class App(tkinter.Tk):
             else:
                 os.system('systemctl suspend')
 
+    def send_notification(self, action):
+        if HAS_PLYER:
+            try:
+                notification.notify(
+                    title="Auto Turnoff Warning",
+                    message=f"Your PC will {action} in 60 seconds!",
+                    app_name="Auto Turnoff",
+                    timeout=10
+                )
+            except Exception as e:
+                print("Notification failed:", e)
+
     def update_timer(self):
         if not self.running:
             return
@@ -206,6 +289,9 @@ class App(tkinter.Tk):
         trigger = self.current_trigger.get()
 
         if trigger == 'countdown':
+            if self.remaining_seconds == 60:
+                self.send_notification(self.function_type.get())
+                
             if self.remaining_seconds > 0:
                 self.remaining_seconds -= 1
                 # Update UI
@@ -219,11 +305,25 @@ class App(tkinter.Tk):
                 self.activate()
 
         elif trigger == 'timedate':
-            current_time = datetime.datetime.now().strftime('%H:%M')
+            now = datetime.datetime.now()
+            current_time = now.strftime('%H:%M')
             target = self.target_time_str.get()
             
             self.time_display.config(text=f'Now: {current_time}\nTarget: {target}')
             self.progress_bar.stop() # Indeterminate or just static
+            
+            # Notification check
+            try:
+                target_dt = datetime.datetime.strptime(target, '%H:%M')
+                target_dt = target_dt.replace(year=now.year, month=now.month, day=now.day)
+                if target_dt <= now:
+                    target_dt += datetime.timedelta(days=1)
+                
+                diff = (target_dt - now).total_seconds()
+                if 59 < diff <= 60:
+                    self.send_notification(self.function_type.get())
+            except ValueError:
+                pass
             
             if current_time == target:
                 self.activate()
