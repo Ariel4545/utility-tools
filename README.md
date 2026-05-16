@@ -1,57 +1,65 @@
 # Calculated Turn Off 🌙
 
-Hi there! Welcome to **Calculated Turn Off**, a friendly little tool to help you schedule when your computer sleeps or restarts. Whether you're downloading a large file overnight or just want to limit your screen time, we've got you covered!
+**Calculated Turn Off** is a modern, cross-platform power management utility designed to give you full control over when your computer shuts down, sleeps, or restarts. 
 
-## What can it do? 🚀
+Whether you're waiting for a download to finish, automating a nightly shutdown, or just want to save energy when you're away, this tool provides a sleek and reliable solution.
 
-*   **Countdown**: Set a timer (in minutes) and walk away. We'll handle the rest.
-*   **Target Time**: Pick a specific time (like 23:30), and we'll shut things down right on the dot.
-*   **Instant Action**: Need to leave *now*? One click to shut down or restart immediately.
-*   **Visuals**: A clear progress bar lets you know exactly how much time is left.
+## Key Features 🚀
+
+-   **Multiple Triggers**:
+    -   ⏳ **Countdown**: Set a timer in minutes.
+    -   🕒 **Target Time**: Schedule an action for a specific time of day (24h format).
+    -   🖱️ **Inactivity**: Trigger actions after a period of mouse/keyboard idle time.
+    -   ⚡ **Instant**: Execute power actions immediately.
+-   **Actions**: Support for **Shut Down**, **Restart**, and **Sleep**.
+-   **Cross-Platform**: Works seamlessly on **Windows**, **macOS**, and **Linux**.
+-   **Modern UI**: Beautiful dark mode and customizable themes powered by `ttkbootstrap`.
+-   **System Tray**: Minimizes to the system tray to run quietly in the background.
+-   **Notifications**: Sends a native desktop warning 60 seconds before execution.
+-   **Auto-Start**: Optional "Run on Startup" feature to keep your settings active across reboots.
+-   **Persistence**: Automatically saves your preferences and themes.
 
 ## Getting Started 🛠️
 
-Since this is a standalone tool, you don't need a complicated setup!
-
 ### Prerequisites
 
-You'll need **Python** installed on your machine.
-This tool also uses a library called `pywin32` to talk to Windows.
+You'll need **Python 3.7+** installed.
 
 ### Installation
 
-1.  Open your terminal or command prompt.
-2.  Install the necessary library:
-    ```bash
-    pip install pywin32
-    ```
-3.  That's it! You're ready to go.
+1. Clone the repository or download the source.
+2. Install the required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ### How to Run
 
-1.  Navigate to the folder where you saved the script.
-2.  Run it with Python:
-    ```bash
-    python auto_turnoff.py
-    ```
+Run the main script:
+```bash
+python auto_turnoff.py
+```
 
 ## How to Use 📖
 
-1.  **Settings Tab**: This is where the magic happens.
-    *   Choose your **Trigger**: Countdown, Time/Date, or Instant.
-    *   Choose your **Action**: Shut Down or Restart.
-    *   Set your time or minutes.
+1.  **Settings Tab**:
+    -   Select your **Trigger Type**.
+    -   Select the **Action** you want to perform.
+    -   Configure the time or inactivity threshold.
+    -   Choose a **Theme** that fits your style.
+    -   Toggle **Run on Startup** if desired.
 2.  **Main Tab**:
-    *   Click **Start** to begin the countdown.
-    *   Click **Stop** if you change your mind.
+    -   Click **Start Timer** to begin.
+    -   Monitor the progress bar and time remaining.
+    -   Click **Stop Timer** at any time to cancel.
 
 ## License 📄
 
-This project is free to use under the **MIT License**. Feel free to modify and share!
+This project is licensed under the **MIT License**.
 
-## A Little Note
+## Important Notes ⚠️
 
-*   **Save your work!** When the timer hits zero, the shutdown/restart happens pretty quickly.
-*   This tool is designed for **Windows**.
+-   **Save your work!** Native notifications will warn you 60 seconds before an action, but the execution is final once the timer hits zero.
+-   **Linux Users**: Ensure `xprintidle` is installed for the best inactivity detection experience.
 
-Enjoy your automated power naps! 💤
+Enjoy your automated power management! 💤
