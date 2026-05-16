@@ -1,3 +1,4 @@
 plyer
 pystray
 Pillow
+ttkbootstrap
