@@ -8,6 +8,15 @@ import threading
 import json
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
+import logging
+import subprocess
+
+# Setup logging
+logging.basicConfig(
+    filename='app.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 try:
     import win32api
@@ -36,6 +45,7 @@ class App(tb.Window):
 
         self.running = False
         self.timer_id = None
+        self.inhibit_proc = None # For Linux/macOS sleep inhibition
 
         # Configuration Variables
         self.triggers = ('countdown', 'instant', 'timedate', 'inactivity')
@@ -263,6 +273,7 @@ Terminal=false
         # Reset UI
         self.stop_timer()
         self.status_label.config(text=f'Executing {action}...')
+        logging.info(f"Activating {action}")
         
         # Execute
         platform = sys.platform
@@ -289,11 +300,62 @@ Terminal=false
                 os.system('systemctl reboot')
         elif action == 'sleep':
             if platform == 'win32':
-                os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
+                try:
+                    import ctypes
+                    # SetSuspendState(bHibernate, bForce, bWakeupEventsDisabled)
+                    # Use 0 for bHibernate to ensure SLEEP not HIBERNATE
+                    ctypes.windll.powrprof.SetSuspendState(0, 1, 0)
+                except:
+                    os.system('rundll32.exe powrprof.dll,SetSuspendState 0,1,0')
             elif platform == 'darwin':
                 os.system('osascript -e \'tell app "System Events" to sleep\'')
             else:
                 os.system('systemctl suspend')
+
+    def inhibit_sleep(self):
+        """Prevents the system from sleeping while a timer is active."""
+        platform = sys.platform
+        try:
+            if platform == 'win32':
+                import ctypes
+                # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x00000001) | ES_AWAYMODE_REQUIRED (0x00000040)
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040)
+                logging.info("Windows sleep inhibition enabled")
+            elif platform == 'darwin':
+                # caffeinate -i (prevent idle sleep)
+                self.inhibit_proc = subprocess.Popen(['caffeinate', '-i'])
+                logging.info("macOS sleep inhibition enabled")
+            elif platform.startswith('linux'):
+                # Try systemd-inhibit
+                try:
+                    self.inhibit_proc = subprocess.Popen([
+                        'systemd-inhibit', 
+                        '--what=idle:sleep', 
+                        '--who=Calculated Turn Off', 
+                        '--why=Timer is active', 
+                        'sleep', 'infinity'
+                    ])
+                    logging.info("Linux (systemd) sleep inhibition enabled")
+                except FileNotFoundError:
+                    logging.warning("systemd-inhibit not found, sleep inhibition might not work")
+        except Exception as e:
+            logging.error(f"Failed to inhibit sleep: {e}")
+
+    def release_sleep(self):
+        """Allows the system to sleep normally again."""
+        platform = sys.platform
+        try:
+            if platform == 'win32':
+                import ctypes
+                # ES_CONTINUOUS (0x80000000) - resets to default
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+                logging.info("Windows sleep inhibition released")
+            elif self.inhibit_proc:
+                self.inhibit_proc.terminate()
+                self.inhibit_proc = None
+                logging.info(f"{platform} sleep inhibition released")
+        except Exception as e:
+            logging.error(f"Failed to release sleep inhibition: {e}")
 
     def send_notification(self, action):
         if HAS_PLYER:
@@ -327,10 +389,34 @@ Terminal=false
             except:
                 pass
         elif platform.startswith('linux'):
+            # 1. Try xprintidle
             try:
                 return int(subprocess.check_output(['xprintidle']).decode().strip()) / 1000.0
             except:
                 pass
+            
+            # 2. Try GNOME D-Bus fallback
+            try:
+                # Query GNOME Mutter for idle time
+                cmd = [
+                    'gdbus', 'call', '--session', 
+                    '--dest', 'org.gnome.Mutter.IdleMonitor', 
+                    '--object-path', '/org/gnome/Mutter/IdleMonitor/Core', 
+                    '--method', 'org.gnome.Mutter.IdleMonitor.GetIdletime'
+                ]
+                output = subprocess.check_output(cmd).decode()
+                # Output looks like: (uint64 12345,)
+                return int(output.split()[1].strip(',)')) / 1000.0
+            except:
+                pass
+            
+            # 3. Try KDE D-Bus fallback (optional, but good to have)
+            try:
+                cmd = ['qdbus', 'org.kde.screensaver', '/ScreenSaver', 'GetSessionIdleTime']
+                return int(subprocess.check_output(cmd).decode().strip())
+            except:
+                pass
+
         return 0
 
     def update_timer(self):
@@ -446,9 +532,11 @@ Terminal=false
             self.status_label.config(text=f'Waiting for {target}...', bootstyle=INFO)
             self.progress_bar.config(maximum=100, value=0)
 
+        self.inhibit_sleep()
         self.running = True
         self.onoff_button.config(text='Stop Timer', bootstyle=DANGER)
         self.notebook.select(self.main_tab)
+        logging.info(f"Timer started (trigger={trigger}, action={self.function_type.get()})")
         self.update_timer()
 
     def stop_timer(self):
@@ -461,6 +549,8 @@ Terminal=false
         self.status_label.config(text='Ready to start', bootstyle=INFO)
         self.time_display.config(text='--:--', font=('Helvetica', 36, 'bold'))
         self.progress_bar['value'] = 0
+        self.release_sleep()
+        logging.info("Timer stopped manually")
 
     def onoff(self):
         if self.running:
