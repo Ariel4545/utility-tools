@@ -1,65 +1,62 @@
-# Calculated Turn Off 🌙
+# Ariel's Utility Tools Suite 🛠️
 
-**Calculated Turn Off** is a modern, cross-platform power management utility designed to give you full control over when your computer shuts down, sleeps, or restarts. 
+A modern, high-aesthetics suite of lightweight, cross-platform desktop utility tools designed to make your daily computer interactions seamless and powerful. Built with Python and beautiful `ttkbootstrap` themes.
 
-Whether you're waiting for a download to finish, automating a nightly shutdown, or just want to save energy when you're away, this tool provides a sleek and reliable solution.
+---
 
-## Key Features 🚀
+## 1. Calculated Turn Off 🌙
 
--   **Multiple Triggers**:
-    -   ⏳ **Countdown**: Set a timer in minutes.
-    -   🕒 **Target Time**: Schedule an action for a specific time of day (24h format).
-    -   🖱️ **Inactivity**: Trigger actions after a period of mouse/keyboard idle time.
-    -   ⚡ **Instant**: Execute power actions immediately.
--   **Actions**: Support for **Shut Down**, **Restart**, and **Sleep**.
--   **Cross-Platform**: Works seamlessly on **Windows**, **macOS**, and **Linux**.
--   **Modern UI**: Beautiful dark mode and customizable themes powered by `ttkbootstrap`.
--   **System Tray**: Minimizes to the system tray to run quietly in the background.
--   **Notifications**: Sends a native desktop warning 60 seconds before execution.
--   **Auto-Start**: Optional "Run on Startup" feature to keep your settings active across reboots.
--   **Persistence**: Automatically saves your preferences and themes.
+A robust power-management utility that puts you in full control of when your computer shuts down, restarts, or sleeps.
 
-## Getting Started 🛠️
-
-### Prerequisites
-
-You'll need **Python 3.7+** installed.
-
-### Installation
-
-1. Clone the repository or download the source.
-2. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Key Features 🚀
+*   **Multiple Triggers**:
+    *   ⏳ **Countdown**: Run an action after a specified number of minutes.
+    *   🕒 **Target Time**: Schedule an action for a specific time of day (24h format).
+    *   🖱️ **Inactivity Trigger**: Detects keyboard/mouse idle time to automatically trigger power actions.
+    *   ⚡ **Instant**: Execute power actions immediately.
+*   **Safety Warning**: Native desktop notifications warn you 60 seconds before executing any scheduled power action.
+*   **Persistent Preferences**: Automatically remembers your settings and trigger preferences across launches.
 
 ### How to Run
-
-Run the main script:
 ```bash
 python auto_turnoff.py
 ```
 
-## How to Use 📖
+---
 
-1.  **Settings Tab**:
-    -   Select your **Trigger Type**.
-    -   Select the **Action** you want to perform.
-    -   Configure the time or inactivity threshold.
-    -   Choose a **Theme** that fits your style.
-    -   Toggle **Run on Startup** if desired.
-2.  **Main Tab**:
-    -   Click **Start Timer** to begin.
-    -   Monitor the progress bar and time remaining.
-    -   Click **Stop Timer** at any time to cancel.
+## 2. Sleek Clipboard History & Manager 📋
 
-## License 📄
+A premium, vertical clipboard manager that tracks your copy history, allows lightning-fast search filtering, and preserves copied snippets.
 
-This project is licensed under the **MIT License**.
+### Key Features ✨
+*   **Clipboard Polling**: Safe, background polling that tracks copied text, updates the list instantly, and deduplicates items.
+*   **Search Filter**: Dynamically query history in real time with immediate search filtering.
+*   **Interactive Cards**: Clean, modern cards that show item lengths and feature quick actions:
+    *   **Copy**: Instantly copy an item back to your clipboard.
+    *   **Delete (✕)**: Remove specific items from your history list.
+*   **Persistent Storage**: Saves your clipboard history (`clipboard_history.json`) and settings (`clipboard_settings.json`) across reboots.
 
-## Important Notes ⚠️
+### How to Run
+```bash
+python clipboard_manager.py
+```
 
--   **Save your work!** Native notifications will warn you 60 seconds before an action, but the execution is final once the timer hits zero.
--   **Linux Users**: Ensure `xprintidle` is installed for the best inactivity detection experience.
+---
 
-Enjoy your automated power management! 💤
+## 🛠️ Getting Started
+
+### Prerequisites
+*   **Python 3.7+**
+*   **Linux Users**: For inactivity detection in the turn-off tool, ensure `xprintidle` is installed:
+    ```bash
+    sudo apt-get install xprintidle
+    ```
+
+### Installation
+1. Clone the repository.
+2. Install the required python packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+Enjoy a faster, automated, and more beautiful desktop experience! 🚀
