@@ -2,3 +2,4 @@ plyer
 pystray
 Pillow
 ttkbootstrap
+psutil
