@@ -14,6 +14,8 @@ A robust power-management utility that puts you in full control of when your com
     *   🕒 **Target Time**: Schedule an action for a specific time of day (24h format).
     *   🖱️ **Inactivity Trigger**: Detects keyboard/mouse idle time to automatically trigger power actions.
     *   ⚡ **Instant**: Execute power actions immediately.
+    *   🖥️ **CPU Idle Trigger**: Executes actions when CPU usage falls and stays below a target percentage.
+    *   🌐 **Network Activity Trigger**: Triggers actions when aggregate network throughput drops below a set bandwidth (KB/s) limit.
 *   **Safety Warning**: Native desktop notifications warn you 60 seconds before executing any scheduled power action.
 *   **Persistent Preferences**: Automatically remembers your settings and trigger preferences across launches.
 
