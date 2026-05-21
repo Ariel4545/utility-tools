@@ -37,6 +37,12 @@ try:
 except ImportError:
     HAS_PLYER = False
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 class App(tb.Window):
     CONFIG_FILE = 'settings.json'
 
@@ -47,8 +53,13 @@ class App(tb.Window):
         self.timer_id = None
         self.inhibit_proc = None # For Linux/macOS sleep inhibition
 
+        # Network and CPU state variables
+        self.last_net_bytes = 0
+        self.last_net_time = 0
+        self.idle_seconds_count = 0
+
         # Configuration Variables
-        self.triggers = ('countdown', 'instant', 'timedate', 'inactivity')
+        self.triggers = ('countdown', 'instant', 'timedate', 'inactivity', 'cpu_idle', 'network_idle')
         self.current_trigger = tkinter.StringVar(value=self.triggers[0])
         
         self.exe_methods = ('shut down', 'restart', 'sleep')
@@ -57,6 +68,9 @@ class App(tb.Window):
         self.countdown_minutes = tkinter.IntVar(value=10)
         self.inactivity_minutes = tkinter.IntVar(value=30)
         self.target_time_str = tkinter.StringVar(value='00:00')
+        self.cpu_threshold = tkinter.IntVar(value=5)
+        self.network_threshold = tkinter.IntVar(value=50)
+        self.idle_duration_minutes = tkinter.IntVar(value=10)
         self.autostart_enabled = tkinter.BooleanVar(value=False)
         self.current_theme = tkinter.StringVar(value="darkly")
 
@@ -71,7 +85,7 @@ class App(tb.Window):
 
         # UI Setup
         self.title('Calculated Turn Off')
-        self.geometry('450x450')
+        self.geometry('450x520')
         self.resizable(False, False)
 
         self.create_widgets()
@@ -135,15 +149,27 @@ class App(tb.Window):
         tb.Label(settings_container, text='Target Time (24h):').grid(row=4, column=0, sticky='w', pady=10)
         tb.Entry(settings_container, textvariable=self.target_time_str, bootstyle=PRIMARY).grid(row=4, column=1, sticky='ew', padx=(10, 0), pady=10)
 
+        # CPU Limit Input
+        tb.Label(settings_container, text='CPU Idle Limit (%):').grid(row=5, column=0, sticky='w', pady=10)
+        tb.Entry(settings_container, textvariable=self.cpu_threshold, bootstyle=PRIMARY).grid(row=5, column=1, sticky='ew', padx=(10, 0), pady=10)
+
+        # Network Limit Input
+        tb.Label(settings_container, text='Net Idle Limit (KB/s):').grid(row=6, column=0, sticky='w', pady=10)
+        tb.Entry(settings_container, textvariable=self.network_threshold, bootstyle=PRIMARY).grid(row=6, column=1, sticky='ew', padx=(10, 0), pady=10)
+
+        # Idle Duration Limit Input
+        tb.Label(settings_container, text='Idle Duration (min):').grid(row=7, column=0, sticky='w', pady=10)
+        tb.Entry(settings_container, textvariable=self.idle_duration_minutes, bootstyle=PRIMARY).grid(row=7, column=1, sticky='ew', padx=(10, 0), pady=10)
+
         # Theme Selection
-        tb.Label(settings_container, text='Theme:').grid(row=5, column=0, sticky='w', pady=10)
+        tb.Label(settings_container, text='Theme:').grid(row=8, column=0, sticky='w', pady=10)
         theme_combo = tb.Combobox(settings_container, values=self.style.theme_names(), textvariable=self.current_theme, state='readonly', bootstyle=SECONDARY)
-        theme_combo.grid(row=5, column=1, sticky='ew', padx=(10, 0), pady=10)
+        theme_combo.grid(row=8, column=1, sticky='ew', padx=(10, 0), pady=10)
         theme_combo.bind('<<ComboboxSelected>>', self.change_theme)
 
         # Footer Actions
         footer_frame = tb.Frame(settings_container)
-        footer_frame.grid(row=6, column=0, columnspan=2, pady=20)
+        footer_frame.grid(row=9, column=0, columnspan=2, pady=20)
         
         tb.Checkbutton(footer_frame, text='Run on Startup', variable=self.autostart_enabled, command=self.toggle_autostart, bootstyle="round-toggle").pack(side='left', padx=10)
 
@@ -239,6 +265,9 @@ Terminal=false
                     if 'countdown' in data: self.countdown_minutes.set(data['countdown'])
                     if 'inactivity' in data: self.inactivity_minutes.set(data['inactivity'])
                     if 'target_time' in data: self.target_time_str.set(data['target_time'])
+                    if 'cpu_threshold' in data: self.cpu_threshold.set(data['cpu_threshold'])
+                    if 'network_threshold' in data: self.network_threshold.set(data['network_threshold'])
+                    if 'idle_duration_minutes' in data: self.idle_duration_minutes.set(data['idle_duration_minutes'])
                     if 'theme' in data: self.current_theme.set(data['theme'])
                     if 'autostart' in data:
                         self.autostart_enabled.set(data['autostart'])
@@ -254,6 +283,9 @@ Terminal=false
                 'countdown': self.countdown_minutes.get(),
                 'inactivity': self.inactivity_minutes.get(),
                 'target_time': self.target_time_str.get(),
+                'cpu_threshold': self.cpu_threshold.get(),
+                'network_threshold': self.network_threshold.get(),
+                'idle_duration_minutes': self.idle_duration_minutes.get(),
                 'theme': self.current_theme.get(),
                 'autostart': self.autostart_enabled.get()
             }
@@ -489,6 +521,79 @@ Terminal=false
             else:
                 self.timer_id = self.after(1000, self.update_timer)
 
+        elif trigger == 'cpu_idle':
+            cpu_percent = psutil.cpu_percent(interval=None)
+            cpu_limit = self.cpu_threshold.get()
+            
+            if cpu_percent < cpu_limit:
+                self.idle_seconds_count += 1
+            else:
+                self.idle_seconds_count = 0
+
+            self.remaining_seconds = max(0, int(self.total_seconds - self.idle_seconds_count))
+            mins, secs = divmod(self.remaining_seconds, 60)
+            self.time_display.config(
+                text=f"CPU: {cpu_percent:.1f}% (Limit: {cpu_limit}%)\nIdle for: {self.idle_seconds_count}s\nRemaining: {mins:02}:{secs:02}",
+                font=('Helvetica', 12)
+            )
+            self.progress_bar.config(maximum=self.total_seconds, value=self.idle_seconds_count)
+
+            if self.remaining_seconds == 60:
+                if not hasattr(self, '_notified_cpu') or not self._notified_cpu:
+                    self.send_notification(self.function_type.get())
+                    self._notified_cpu = True
+            elif self.remaining_seconds > 60:
+                self._notified_cpu = False
+
+            if self.idle_seconds_count >= self.total_seconds:
+                self.activate()
+            else:
+                self.timer_id = self.after(1000, self.update_timer)
+
+        elif trigger == 'network_idle':
+            now_time = time.time()
+            try:
+                net_io = psutil.net_io_counters()
+                current_bytes = net_io.bytes_recv + net_io.bytes_sent
+            except Exception as e:
+                current_bytes = self.last_net_bytes
+                logging.error(f"Failed to read net_io_counters: {e}")
+
+            elapsed = now_time - self.last_net_time
+            if elapsed <= 0: elapsed = 1.0
+            
+            speed_bps = (current_bytes - self.last_net_bytes) / elapsed
+            speed_kbps = speed_bps / 1024.0
+
+            self.last_net_bytes = current_bytes
+            self.last_net_time = now_time
+
+            speed_limit = self.network_threshold.get()
+            if speed_kbps < speed_limit:
+                self.idle_seconds_count += 1
+            else:
+                self.idle_seconds_count = 0
+
+            self.remaining_seconds = max(0, int(self.total_seconds - self.idle_seconds_count))
+            mins, secs = divmod(self.remaining_seconds, 60)
+            self.time_display.config(
+                text=f"Speed: {speed_kbps:.1f} KB/s (Limit: {speed_limit} KB/s)\nIdle for: {self.idle_seconds_count}s\nRemaining: {mins:02}:{secs:02}",
+                font=('Helvetica', 12)
+            )
+            self.progress_bar.config(maximum=self.total_seconds, value=self.idle_seconds_count)
+
+            if self.remaining_seconds == 60:
+                if not hasattr(self, '_notified_network') or not self._notified_network:
+                    self.send_notification(self.function_type.get())
+                    self._notified_network = True
+            elif self.remaining_seconds > 60:
+                self._notified_network = False
+
+            if self.idle_seconds_count >= self.total_seconds:
+                self.activate()
+            else:
+                self.timer_id = self.after(1000, self.update_timer)
+
     def start_timer(self):
         trigger = self.current_trigger.get()
 
@@ -531,6 +636,50 @@ Terminal=false
             
             self.status_label.config(text=f'Waiting for {target}...', bootstyle=INFO)
             self.progress_bar.config(maximum=100, value=0)
+
+        elif trigger == 'cpu_idle':
+            if not HAS_PSUTIL:
+                messagebox.showerror('Error', 'psutil library is required for CPU Idle monitoring. Please install it first.')
+                return
+            try:
+                mins = self.idle_duration_minutes.get()
+                if mins <= 0: raise ValueError
+            except:
+                messagebox.showerror('Error', 'Invalid duration minutes.')
+                return
+            self.total_seconds = mins * 60
+            self.remaining_seconds = self.total_seconds
+            self.idle_seconds_count = 0
+            self.status_label.config(text='Waiting for CPU idle...', bootstyle=INFO)
+            self._notified_cpu = False
+            self.progress_bar.config(maximum=self.total_seconds, value=0)
+
+        elif trigger == 'network_idle':
+            if not HAS_PSUTIL:
+                messagebox.showerror('Error', 'psutil library is required for Network Idle monitoring. Please install it first.')
+                return
+            try:
+                mins = self.idle_duration_minutes.get()
+                if mins <= 0: raise ValueError
+            except:
+                messagebox.showerror('Error', 'Invalid duration minutes.')
+                return
+            self.total_seconds = mins * 60
+            self.remaining_seconds = self.total_seconds
+            self.idle_seconds_count = 0
+            
+            try:
+                net_io = psutil.net_io_counters()
+                self.last_net_bytes = net_io.bytes_recv + net_io.bytes_sent
+                self.last_net_time = time.time()
+            except Exception as e:
+                logging.error(f"Failed to read net_io_counters on start: {e}")
+                self.last_net_bytes = 0
+                self.last_net_time = time.time()
+
+            self.status_label.config(text='Waiting for Network idle...', bootstyle=INFO)
+            self._notified_network = False
+            self.progress_bar.config(maximum=self.total_seconds, value=0)
 
         self.inhibit_sleep()
         self.running = True
